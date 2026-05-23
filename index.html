@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Prototipador Mecânico</title>
+
+  <!--
+    Tabler Icons (CDN) — webfont de ícones de linha.
+    Requer conexão à internet. Para uso offline, baixe o CSS e os fontes
+    de: https://github.com/tabler/tabler-icons/releases
+    e substitua este link por um caminho local.
+  -->
+  <link rel="stylesheet"
+        href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.19.0/tabler-icons.min.css">
+
+  <!-- Estilos da aplicação -->
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+
+<!-- ════════════════════════════════════════════════════════════
+     APP CONTAINER
+     Flex column: header + toolbar + main (canvas + panel) + statusbar
+     ════════════════════════════════════════════════════════════ -->
+<div id="app">
+
+  <!-- ── HEADER ─────────────────────────────────────────────── -->
+  <div id="hdr">
+    <div id="hdr-title">
+      <i class="ti ti-ruler-2"></i>
+      Prototipador Mecânico
+      <span class="hv">v2.1</span>
+    </div>
+  </div>
+
+  <!-- ── TOOLBAR ────────────────────────────────────────────── -->
+  <div id="tb">
+
+    <!-- Grupo: Seleção -->
+    <span class="tbl">Vista</span>
+    <button class="tb on" id="tb-select" onclick="setTool('select')" title="Selecionar e mover (S)">
+      <i class="ti ti-cursor-text"></i>Selecionar<span class="tbk">S</span>
+    </button>
+
+    <div class="tbs"></div>
+
+    <!-- Grupo: Ferramentas de Desenho -->
+    <span class="tbl">Desenho</span>
+    <button class="tb" id="tb-line" onclick="setTool('line')" title="Desenhar linha (L)">
+      <i class="ti ti-minus"></i>Linha<span class="tbk">L</span>
+    </button>
+    <button class="tb" id="tb-circle" onclick="setTool('circle')" title="Desenhar círculo (C)">
+      <i class="ti ti-circle"></i>Círculo<span class="tbk">C</span>
+    </button>
+    <button class="tb" id="tb-arc" onclick="setTool('arc')" title="Desenhar arco (A)">
+      <i class="ti ti-circle-dashed"></i>Arco<span class="tbk">A</span>
+    </button>
+
+    <div class="tbs"></div>
+
+    <!-- Grupo: Ferramentas de Edição -->
+    <span class="tbl">Edição</span>
+    <button class="tb trim" id="tb-trim" onclick="setTool('trim')" title="Aparar nas intersecções (T)">
+      <i class="ti ti-cut"></i>Aparar<span class="tbk">T</span>
+    </button>
+    <button class="tb red" id="tb-delete" onclick="setTool('delete')" title="Deletar elemento (D)">
+      <i class="ti ti-trash"></i>Deletar<span class="tbk">D</span>
+    </button>
+
+    <div class="tbs"></div>
+
+    <!-- Grupo: Visualização -->
+    <button class="tb on" id="tb-grid" onclick="toggleGrid()" title="Mostrar/ocultar grade">
+      <i class="ti ti-grid-dots"></i>Grade
+    </button>
+    <button class="tb on" id="tb-snap" onclick="toggleSnap()" title="Ativar/desativar snap à grade">
+      <i class="ti ti-magnet"></i>Snap
+    </button>
+    <button class="tb" onclick="undo()" title="Desfazer última ação (Ctrl+Z)">
+      <i class="ti ti-arrow-back-up"></i>Desfazer
+    </button>
+    <button class="tb" onclick="clearAll()" title="Limpar todo o esboço">
+      <i class="ti ti-refresh"></i>Limpar
+    </button>
+
+    <div class="tbs"></div>
+
+    <!-- Grupo: Persistência de Projetos -->
+    <span class="tbl">Projetos</span>
+    <button class="tb" onclick="saveProject()" title="Salvar projeto no navegador">
+      <i class="ti ti-device-floppy"></i>Salvar
+    </button>
+    <button class="tb" onclick="openLoadModal()" title="Carregar projeto salvo">
+      <i class="ti ti-folder-open"></i>Carregar
+    </button>
+
+    <div class="tbs"></div>
+
+    <!-- Grupo: Exportação -->
+    <span class="tbl">Exportar</span>
+    <button class="tb" onclick="exportDXF()"
+            title="Exportar DXF — compatível com AutoCAD, FreeCAD, LibreCAD…">
+      <i class="ti ti-file-export"></i>DXF
+      <span class="tbk" style="background:#fef3c7;color:#92400e">CAD</span>
+    </button>
+    <button class="tb" onclick="exportSVG()" title="Exportar SVG vetorial">
+      <i class="ti ti-download"></i>SVG
+    </button>
+
+  </div><!-- /toolbar -->
+
+
+  <!-- ── MAIN: CANVAS + PAINEL ──────────────────────────────── -->
+  <div id="main">
+
+    <!-- ── Canvas SVG ─────────────────────────────────────────── -->
+    <div id="cv">
+      <svg id="sk" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <!--
+            Padrão de grade: dois níveis de linhas.
+            gf = grade fina (10px entre linhas)
+            gc = grade grossa (50px, quadrados maiores)
+          -->
+          <pattern id="gf" width="10" height="10" patternUnits="userSpaceOnUse">
+            <path d="M10 0L0 0 0 10" fill="none"
+                  stroke="var(--grid-minor)" stroke-width=".4"/>
+          </pattern>
+          <pattern id="gc" width="50" height="50" patternUnits="userSpaceOnUse">
+            <rect width="50" height="50" fill="url(#gf)"/>
+            <path d="M50 0L0 0 0 50" fill="none"
+                  stroke="var(--grid-major)" stroke-width=".8"/>
+          </pattern>
+        </defs>
+
+        <!-- Fundo da grade (ocultado por toggleGrid()) -->
+        <rect id="gbg" width="100%" height="100%" fill="url(#gc)"/>
+
+        <!--
+          Grupos SVG em camadas — a ordem define qual fica "na frente":
+          ge: entidades geométricas (linhas, círculos, arcos)
+          gd: cotas dimensionais (labels e linhas de cota)
+          gh: alças de controle da seleção (handles azuis)
+          gt: shape temporário em construção (preview)
+        -->
+        <g id="ge"></g>
+        <g id="gd"></g>
+        <g id="gh"></g>
+        <g id="gt"></g>
+      </svg>
+
+      <!-- Overlay flutuante de edição de dimensão -->
+      <div id="dov">
+        <label id="dl">dim (mm)</label>
+        <input id="di" type="number" step=".5" min=".1"
+               aria-label="Valor da dimensão em milímetros">
+      </div>
+
+      <!-- Indicador visual de snap a ponto de ancoragem -->
+      <div id="snap-dot" aria-hidden="true">
+        <svg width="13" height="13">
+          <circle cx="6.5" cy="6.5" r="4"
+                  fill="none" stroke="#2563eb" stroke-width="1.5"/>
+          <circle cx="6.5" cy="6.5" r="1.5" fill="#2563eb"/>
+        </svg>
+      </div>
+    </div><!-- /cv -->
+
+
+    <!-- ── Painel de Propriedades ─────────────────────────────── -->
+    <div id="pn">
+      <div id="pnh">Propriedades</div>
+      <!-- Conteúdo gerado dinamicamente por panel.js / updatePanel() -->
+      <div id="pnb"></div>
+    </div>
+
+  </div><!-- /main -->
+
+
+  <!-- ── BARRA DE STATUS ────────────────────────────────────── -->
+  <div id="sb">
+    <span id="sb-tool">Ferramenta: Selecionar</span>
+    <span>│</span>
+    <span id="sb-xy">X: —  Y: —</span>
+    <span>│</span>
+    <span id="sb-cnt">0 entidades</span>
+    <span style="flex:1"></span>
+    <span id="sb-hint">Clique para selecionar</span>
+    <span>│</span>
+    <span id="sb-save" style="color:var(--text3)">—</span>
+  </div>
+
+</div><!-- /app -->
+
+
+<!-- ════════════════════════════════════════════════════════════
+     TOAST DE NOTIFICAÇÃO
+     Posicionado fora do #app para não ser afetado pelo overflow
+     ════════════════════════════════════════════════════════════ -->
+<div id="toast" role="status" aria-live="polite"></div>
+
+
+<!-- ════════════════════════════════════════════════════════════
+     MODAL DE CARREGAR PROJETO
+     ════════════════════════════════════════════════════════════ -->
+<div id="modal-bg" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+  <div id="modal">
+    <h3 id="modal-title">
+      <i class="ti ti-folder-open" style="margin-right:6px"></i>Carregar Projeto
+    </h3>
+    <p>Selecione um projeto salvo ou importe um arquivo .json.</p>
+
+    <!-- Lista de projetos gerada dinamicamente por persistence.js -->
+    <div id="modal-list"></div>
+
+    <div class="modal-row">
+      <!--
+        Input de arquivo oculto — ativado pelo botão "Importar .json".
+        Aceita apenas arquivos .json.
+      -->
+      <input type="file" id="file-input" accept=".json" style="display:none"
+             onchange="importJSON(event)">
+      <button class="modal-btn"
+              onclick="document.getElementById('file-input').click()">
+        <i class="ti ti-file-import"></i> Importar .json
+      </button>
+      <button class="modal-btn" onclick="closeModal()">Cancelar</button>
+    </div>
+  </div>
+</div>
+
+
+<!-- ════════════════════════════════════════════════════════════
+     SCRIPTS — carregados na ordem correta de dependências
+
+     Ordem obrigatória:
+     1. config.js     → constantes (sem dependências)
+     2. state.js      → variáveis globais (usa constantes de config)
+     3. geometry.js   → funções matemáticas (usa state e config)
+     4. render.js     → renderização SVG (usa geometry e state)
+     5. trim.js       → algoritmo de aparar (usa geometry e state)
+     6. dimension.js  → overlay de cotas (usa state e render)
+     7. panel.js      → painel de propriedades (usa state e geometry)
+     8. persistence.js→ localStorage (usa state e render)
+     9. export.js     → exportação DXF/SVG (usa state e geometry)
+     10. main.js      → inicialização e eventos (usa tudo acima)
+     ════════════════════════════════════════════════════════════ -->
+<script src="js/config.js"></script>
+<script src="js/state.js"></script>
+<script src="js/geometry.js"></script>
+<script src="js/render.js"></script>
+<script src="js/trim.js"></script>
+<script src="js/dimension.js"></script>
+<script src="js/panel.js"></script>
+<script src="js/persistence.js"></script>
+<script src="js/export.js"></script>
+<script src="js/main.js"></script>
+
+</body>
+</html>
